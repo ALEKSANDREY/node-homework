@@ -1,9 +1,23 @@
 const express = require("express");
 const app = express();
 const timeRouter = require("./routes/timeRoutes");
+const userRouter = require("./routes/userRoutes");
 
-// Built-in middleware to automatically parse incoming JSON bodies (No more data/end listeners!)
+// Custom Middleware
+const notFoundMiddleware = require("./middleware/not-found");
+const errorHandlerMiddleware = require("./middleware/error-handler");
+
+//Initialize global temporary database variables (Week 3 requirement)
+global.user_id = null;
+global.users = [];
+global.tasks = [];
+
+// Built-in middleware to automatically parse incoming JSON bodies
 app.use(express.json());
+
+//Mount Routers
+app.use("/api", timeRouter);        // Keeps /api/time and /api/echo working
+app.use("/api/users", userRouter);  // Mounts /api/users/register, logon, logoff
 
 // Main Root Routes
 app.get("/", (req, res) => {
@@ -15,16 +29,11 @@ app.post("/testpost", (req, res) => {
         message: "POST route works",
     });
 });
+// Catch-all Not Found Middleware
+app.use(notFoundMiddleware);
 
-// Use our externalized clean routing module under the /api prefix
-app.use("/api", timeRouter);
-
-// Advanced Task: Fallback wildcard route for unknown paths
-app.all("/*splat", (req, res) => {
-    res.status(404).json({
-        message: `No route found for ${req.method} ${req.path}`,
-    });
-});
+// Global Error Handler Middleware (Must be at the very end!)
+app.use(errorHandlerMiddleware);
 
 const port = process.env.PORT || 3000;
 const server = app.listen(port, () => {
