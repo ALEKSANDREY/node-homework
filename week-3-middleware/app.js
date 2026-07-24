@@ -3,24 +3,25 @@ const express = require("express");
 const path = require("path");
 const { randomUUID } = require("crypto");
 const dogRouter = require("./routes/dogs");
+const { ValidationError } = require("./errors");
 
 const app = express();
 
-// Request ID
+// 1. Request ID
 app.use((req, res, next) => {
     req.requestId = randomUUID();
     res.setHeader("X-Request-Id", req.requestId);
     next();
 });
 
-// Logger
+// 2. Logger
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}]: ${req.method} ${req.path} (${req.requestId})`);
     next();
 });
 
-// Security Headers
+// 3. Security Headers
 app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -28,33 +29,30 @@ app.use((req, res, next) => {
     next();
 });
 
-// Body Parser
-app.use(express.json({ limit: "1mb" }));
-
-// Content-Type Check for POST/PUT/PATCH
+// 4. Content-Type Check (before body parsing)
 app.use((req, res, next) => {
     const methodsWithBody = ["POST", "PUT", "PATCH"];
     if (methodsWithBody.includes(req.method) && !req.is("application/json")) {
-        return res.status(400).json({
-            error: "Content-Type must be application/json",
-            requestId: req.requestId,
-        });
+        return next(new ValidationError("Content-Type must be application/json"));
     }
     next();
 });
 
-// Static files
+// 5. Body Parser
+app.use(express.json({ limit: "1mb" }));
+
+// 6. Static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// Dog Router
+// 7. Dog Router
 app.use("/", dogRouter);
 
-// Test Error Route
+// 8. Test Error Route
 app.get("/error", (req, res, next) => {
     next(new Error("Internal Server Error"));
 });
 
-// 404 Handler
+// 9. 404 Handler
 app.use((req, res) => {
     res.status(404).json({
         error: "Route not found",
@@ -62,7 +60,7 @@ app.use((req, res) => {
     });
 });
 
-// Central Error Handler
+// 10. Central Error Handler
 app.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500;
 

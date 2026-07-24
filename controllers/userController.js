@@ -11,9 +11,10 @@ const register = (req, res) => {
     };
 
     global.users.push(newUser);
-    global.user_id = newUser.id;
 
-    // Return only name and email per reviewer instructions
+    // Reviewer requirement: set global.user_id to the user object, not an integer ID
+    global.user_id = newUser;
+
     return res.status(201).json({
         name: newUser.name,
         email: newUser.email,
@@ -31,7 +32,8 @@ const logon = (req, res) => {
         return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    global.user_id = user.id;
+    // Reviewer requirement: set global.user_id to the logged-in user object
+    global.user_id = user;
 
     return res.status(200).json({
         name: user.name,
@@ -41,7 +43,8 @@ const logon = (req, res) => {
 
 const logoff = (req, res) => {
     global.user_id = null;
-    return res.status(200).json({ message: "Logged off successfully" });
+    // Reviewer requirement: return ONLY status 200 without a JSON body
+    return res.sendStatus(200);
 };
 
 module.exports = {

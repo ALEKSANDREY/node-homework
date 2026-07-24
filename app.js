@@ -11,12 +11,11 @@ global.user_id = null;
 global.users = [];
 global.tasks = [];
 
+// Middleware order: JSON parser -> Routes -> 404 -> Error Handler
 app.use(express.json());
 
-// User Router mounted at /api/users
 app.use("/api/users", userRouter);
 
-// 404 & Error Handlers
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
