@@ -1,46 +1,62 @@
 // week-3-middleware/routes/dogs.js
 const express = require("express");
 const router = express.Router();
-const dogData = require("../dogData");
+const rawDogData = require("../dogData");
 const { ValidationError, NotFoundError } = require("../errors");
+
+// Helper to safely access dog array
+const getDogArray = () => {
+    if (Array.isArray(rawDogData)) return rawDogData;
+    if (rawDogData && Array.isArray(rawDogData.dogData)) return rawDogData.dogData;
+    if (rawDogData && Array.isArray(rawDogData.dogs)) return rawDogData.dogs;
+    if (rawDogData && Array.isArray(rawDogData.default)) return rawDogData.default;
+    return [];
+};
 
 // GET /dogs
 router.get("/dogs", (req, res) => {
-    res.status(200).json(dogData);
+    res.status(200).json(getDogArray());
 });
 
 // POST /adopt
 router.post("/adopt", (req, res, next) => {
     const body = req.body || {};
-    const { name, email, dog: dogParam, dogName } = body;
 
-    // Determine dog search name
-    const searchName = dogParam || dogName || name;
+    // Priority order: dogName / dog / dog_name FIRST, then fall back to name
+    const dogSearchName = body.dogName || body.dog || body.dog_name || body.name;
+    const adopterEmail = body.email;
 
-    // 1. Validation: Require BOTH dog name AND applicant email (3C requirement)
-    if (!searchName || !email) {
+    // 1. Required fields check
+    if (!dogSearchName || !adopterEmail) {
         return next(new ValidationError("Missing required fields"));
     }
 
-    // 2. Search for dog in dataset by name (case-insensitive)
-    const dog = dogData.find(
-        (d) => d.name && d.name.toLowerCase() === searchName.toLowerCase()
-    );
+    const dogList = getDogArray();
+    const searchStr = String(dogSearchName).trim().toLowerCase();
 
-    // Check availability (dogData uses status: "available")
+    // 2. Find matching dog by name or id
+    const dog = dogList.find((d) => {
+        if (!d) return false;
+        const dName = d.name ? String(d.name).trim().toLowerCase() : "";
+        const dId = d.id != null ? String(d.id).trim().toLowerCase() : "";
+        return dName === searchStr || dId === searchStr;
+    });
+
+    // 3. Check availability (in dogData.js status is "available")
     const isAvailable =
-        dog && (dog.status === "available" || dog.available === true);
+        dog &&
+        (dog.status === "available" ||
+            dog.available === true ||
+            dog.available === "true" ||
+            (dog.status === undefined && dog.available === undefined));
 
-    // If dog is not found or not available -> 404 (3C requirement)
     if (!dog || !isAvailable) {
-        return next(new NotFoundError("Dog not found or not available"));
+        return next(new NotFoundError("not found or not available"));
     }
 
-    // 3. Success response formatting (3B & 3C requirement)
-    const message = `Adoption request received. We will contact you at ${email} for further details.`;
-
+    // 4. Success Response (201)
     return res.status(201).json({
-        message,
+        message: `Adoption request received. We will contact you at ${adopterEmail} for further details.`,
         dog,
     });
 });

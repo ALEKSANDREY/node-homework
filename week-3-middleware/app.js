@@ -6,21 +6,21 @@ const dogRouter = require("./routes/dogs");
 
 const app = express();
 
-// 1. Custom Request ID Middleware
+// Request ID
 app.use((req, res, next) => {
     req.requestId = randomUUID();
     res.setHeader("X-Request-Id", req.requestId);
     next();
 });
 
-// 2. Custom Logging Middleware
+// Logger
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}]: ${req.method} ${req.path} (${req.requestId})`);
     next();
 });
 
-// 3. Security Headers Middleware
+// Security Headers
 app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -28,10 +28,10 @@ app.use((req, res, next) => {
     next();
 });
 
-// 4. JSON Body Parser with 1mb limit
+// Body Parser
 app.use(express.json({ limit: "1mb" }));
 
-// 5. Content-Type Validation Middleware
+// Content-Type Check for POST/PUT/PATCH
 app.use((req, res, next) => {
     const methodsWithBody = ["POST", "PUT", "PATCH"];
     if (methodsWithBody.includes(req.method) && !req.is("application/json")) {
@@ -43,18 +43,18 @@ app.use((req, res, next) => {
     next();
 });
 
-// 6. Static File Middleware
+// Static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// 7. Mount Dog Routes AT ROOT ROUTE "/"
+// Dog Router
 app.use("/", dogRouter);
 
-// Base route for error checking verification
+// Test Error Route
 app.get("/error", (req, res, next) => {
     next(new Error("Internal Server Error"));
 });
 
-// 8. 404 Handler for Unmatched Routes
+// 404 Handler
 app.use((req, res) => {
     res.status(404).json({
         error: "Route not found",
@@ -62,7 +62,7 @@ app.use((req, res) => {
     });
 });
 
-// 9. Centralized Error Handler
+// Central Error Handler
 app.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500;
 
