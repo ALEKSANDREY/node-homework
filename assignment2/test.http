@@ -1,0 +1,6 @@
+POST http://localhost:3000/api/echo
+Content-Type: application/json
+
+{
+  "source": "Express layout practice"
+}
