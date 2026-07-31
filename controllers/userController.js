@@ -1,61 +1,68 @@
-const crypto = require("crypto");
-const { userSchema } = require("../validation/userSchema");
+const crypto = require('crypto');
+const { promisify } = require('util');
+// Ensure this path matches where your user Joi schema lives:
+const { userSchema } = require('../validation/userSchema');
 
-// Helper: Hash password using crypto.scrypt
-const hashPassword = (password) => {
-    return new Promise((resolve, reject) => {
-        const salt = crypto.randomBytes(16).toString("hex");
-        crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-            if (err) return reject(err);
-            resolve(`${salt}:${derivedKey.toString("hex")}`);
-        });
-    });
+const scrypt = promisify(crypto.scrypt);
+
+const hashPassword = async (password) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const derivedKey = await scrypt(password, salt, 64);
+    return `${salt}:${derivedKey.toString('hex')}`;
 };
 
-// Helper: Compare password using stored salt and hash
-const comparePassword = (password, storedHash) => {
-    return new Promise((resolve, reject) => {
-        if (!storedHash) return resolve(false);
-        const [salt, key] = storedHash.split(":");
-        crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-            if (err) return reject(err);
-            resolve(key === derivedKey.toString("hex"));
-        });
-    });
+const comparePassword = async (password, hashedPassword) => {
+    if (!hashedPassword || !hashedPassword.includes(':')) return false;
+    const [salt, key] = hashedPassword.split(':');
+    const derivedKey = await scrypt(password, salt, 64);
+    return crypto.timingSafeEqual(Buffer.from(key, 'hex'), derivedKey);
 };
 
-// 1. Register User
 exports.register = async (req, res) => {
     if (!req.body) req.body = {};
 
-    const { error, value } = userSchema.validate(req.body, { abortEarly: false });
+    // 1. Validate with Joi schema
+    const { error } = userSchema.validate(req.body);
     if (error) {
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: error.details[0].message });
     }
 
-    const hashedPassword = await hashPassword(value.password);
+    const { name, email, password } = req.body;
+
+    if (!global.users) global.users = [];
+
+    const existingUser = global.users.find(u => u.email === email);
+    if (existingUser) {
+        return res.status(400).json({ message: "User already exists" });
+    }
+
+    const hashedPassword = await hashPassword(password);
+    const nextId = global.users.length > 0 ? Math.max(...global.users.map(u => Number(u.id) || 0)) + 1 : 1;
 
     const newUser = {
-        id: global.users.length + 1,
-        name: value.name,
-        email: value.email,
-        hashedPassword: hashedPassword,
+        id: nextId,
+        name,
+        email,
+        hashedPassword
     };
 
     global.users.push(newUser);
+    global.user_id = newUser;
 
     return res.status(201).json({
         id: newUser.id,
         name: newUser.name,
-        email: newUser.email,
+        email: newUser.email
     });
 };
 
-// 2. Logon User
 exports.logon = async (req, res) => {
-    const { email, password } = req.body || {};
+    if (!req.body) req.body = {};
+    const { email, password } = req.body;
 
-    const user = global.users.find((u) => u.email === email);
+    if (!global.users) global.users = [];
+
+    const user = global.users.find(u => u.email === email);
     if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -65,17 +72,15 @@ exports.logon = async (req, res) => {
         return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Set active global user identifier to user ID
-    global.user_id = user.id;
+    global.user_id = user;
 
     return res.status(200).json({
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: user.email
     });
 };
 
-// 3. Logoff User
 exports.logoff = async (req, res) => {
     global.user_id = null;
     return res.status(200).json({ message: "Logged off successfully" });

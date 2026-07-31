@@ -1,29 +1,23 @@
-// app.js
-const express = require("express");
+const express = require('express');
 const app = express();
 
-const userRouter = require("./routes/userRoutes");
-const notFoundMiddleware = require("./middleware/not-found");
-const errorHandlerMiddleware = require("./middleware/error-handler");
+const userRouter = require('./routes/userRoutes');
+const taskRouter = require('./routes/taskRoutes');
+const authMiddleware = require('./middleware/authMiddleware');
+const notFoundMiddleware = require('./middleware/notFoundMiddleware');
+const errorHandlerMiddleware = require('./middleware/errorHandlerMiddleware');
 
-const authMiddleware = require("./middleware/auth");
-const taskRouter = require("./routes/taskRoutes");
-
-// Initialize required globals
-global.user_id = null;
-global.users = [];
-global.tasks = [];
-
-// Middleware order: JSON parser -> Routes -> 404 -> Error Handler
 app.use(express.json());
 
+// 1. PUBLIC ROUTES & PROTECTED TASK ROUTES MUST BE FIRST
+app.use('/api/users', userRouter);
+app.use('/api/tasks', authMiddleware, taskRouter);
 
+// 2. ERROR HANDLERS MUST BE AT THE VERY BOTTOM
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
-app.use("/api/users", userRouter);
-// Protected task routes
-app.use("/api/tasks", authMiddleware, taskRouter);
+module.exports = app;
 
 app.use((req, res, next) => {
     res.status(404).json({ message: 'Not Found' });
