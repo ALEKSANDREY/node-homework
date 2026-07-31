@@ -17,13 +17,17 @@ global.tasks = [];
 // Middleware order: JSON parser -> Routes -> 404 -> Error Handler
 app.use(express.json());
 
-app.use("/api/users", userRouter);x``
 
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
+app.use("/api/users", userRouter);
 // Protected task routes
 app.use("/api/tasks", authMiddleware, taskRouter);
+
+app.use((req, res, next) => {
+    res.status(404).json({ message: 'Not Found' });
+});
 
 const port = process.env.PORT || 3000;
 const server = app.listen(port, () => {
