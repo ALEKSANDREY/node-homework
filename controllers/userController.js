@@ -1,54 +1,64 @@
-// controllers/userController.js
+const crypto = require("crypto");
+const util = require("util");
+const scrypt = util.promisify(crypto.scrypt);
+const { userSchema } = require("../validation/userSchema");
 
-const register = (req, res) => {
-    const { name, email, password } = req.body || {};
+async function hashPassword(password) {
+    const salt = crypto.randomBytes(16).toString("hex");
+    const derivedKey = await scrypt(password, salt, 64);
+    return `${salt}:${derivedKey.toString("hex")}`;
+}
 
+async function comparePassword(inputPassword, storedHash) {
+    const [salt, key] = storedHash.split(":");
+    const keyBuffer = Buffer.from(key, "hex");
+    const derivedKey = await scrypt(inputPassword, salt, 64);
+    return crypto.timingSafeEqual(keyBuffer, derivedKey);
+}
+
+exports.register = async (req, res) => {
+    if (!req.body) req.body = {};
+
+    const { error, value } = userSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+        return res.status(400).json({ message: error.message });
+    }
+
+    const existingUser = global.users.find((u) => u.email === value.email);
+    if (existingUser) {
+        return res.status(400).json({ message: "User already exists" });
+    }
+
+    const hashedPassword = await hashPassword(value.password);
     const newUser = {
-        id: global.users.length + 1,
-        name,
-        email,
-        password,
+        email: value.email,
+        name: value.name,
+        hashedPassword,
     };
 
     global.users.push(newUser);
-
-    // Reviewer requirement: set global.user_id to the user object, not an integer ID
     global.user_id = newUser;
 
-    return res.status(201).json({
-        name: newUser.name,
-        email: newUser.email,
-    });
+    return res.status(201).json({ name: newUser.name, email: newUser.email });
 };
 
-const logon = (req, res) => {
-    const { email, password } = req.body || {};
+exports.logon = async (req, res) => {
+    if (!req.body) req.body = {};
+    const { email, password } = req.body;
 
-    const user = global.users.find(
-        (u) => u.email === email && u.password === password
-    );
+    const user = global.users.find((u) => u.email === email);
+    const goodCredentials =
+        user && (await comparePassword(password, user.hashedPassword));
 
-    if (!user) {
-        return res.status(401).json({ error: "Invalid credentials" });
+    if (!goodCredentials) {
+        return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Reviewer requirement: set global.user_id to the logged-in user object
     global.user_id = user;
-
-    return res.status(200).json({
-        name: user.name,
-        email: user.email,
-    });
+    return res.status(200).json({ name: user.name, email: user.email });
 };
 
-const logoff = (req, res) => {
+exports.logoff = (req, res) => {
     global.user_id = null;
-    // Reviewer requirement: return ONLY status 200 without a JSON body
     return res.sendStatus(200);
-};
-
-module.exports = {
-    register,
-    logon,
-    logoff,
 };
