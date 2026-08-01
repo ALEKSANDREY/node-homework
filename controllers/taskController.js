@@ -1,11 +1,17 @@
-const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
+const schemas = require("../validation/taskSchema");
 
+// Support both patchTaskSchema and updateTaskSchema names safely
+const taskSchema = schemas.taskSchema;
+const patchTaskSchema = schemas.patchTaskSchema || schemas.updateTaskSchema || taskSchema;
+
+// Helper: Remove userId from API responses
 const sanitize = (task) => {
     if (!task) return null;
     const { userId, ...rest } = task;
     return rest;
 };
 
+// Helper: Validate task ID from params (accepts positive integers or numeric strings)
 const parseTaskId = (idParam) => {
     if (idParam === undefined || idParam === null) return null;
     const num = Number(idParam);
@@ -15,23 +21,15 @@ const parseTaskId = (idParam) => {
     return num;
 };
 
-// Robust Ownership check: checks email first (AirHub requirement), then falls back to ID matching
+// Helper: Strict task ownership check using global.user_id.email per AirHub instructions
 const isTaskOwner = (task) => {
-    if (!task || !global.user_id) return false;
-
-    const currentUserEmail = typeof global.user_id === 'object' ? global.user_id.email : null;
-    const currentUserId = typeof global.user_id === 'object' ? global.user_id.id : global.user_id;
-
-    if (task.userId && currentUserEmail && task.userId === currentUserEmail) {
-        return true;
+    if (!task || !global.user_id || !global.user_id.email) {
+        return false;
     }
-    if (task.userId && currentUserId && String(task.userId) === String(currentUserId)) {
-        return true;
-    }
-
-    return false; // Strictly NO missing userId fallback!
+    return task.userId === global.user_id.email;
 };
 
+// 1. Create Task
 exports.create = async (req, res) => {
     if (!req.body) req.body = {};
 
@@ -46,14 +44,9 @@ exports.create = async (req, res) => {
             ? Math.max(...tasksList.map((t) => Number(t.id) || 0)) + 1
             : 1;
 
-    // Assign user email if object, otherwise fallback to global.user_id
-    const assignedUserId = (global.user_id && global.user_id.email)
-        ? global.user_id.email
-        : global.user_id;
-
     const newTask = {
         id: nextId,
-        userId: assignedUserId,
+        userId: global.user_id ? global.user_id.email : null,
         ...value,
     };
 
@@ -62,6 +55,7 @@ exports.create = async (req, res) => {
     return res.status(201).json(sanitize(newTask));
 };
 
+// 2. Index Tasks
 exports.index = async (req, res) => {
     const userTasks = (global.tasks || []).filter((t) => isTaskOwner(t));
 
@@ -72,6 +66,7 @@ exports.index = async (req, res) => {
     return res.status(200).json(userTasks.map(sanitize));
 };
 
+// 3. Show Task
 exports.show = async (req, res) => {
     const taskId = parseTaskId(req.params ? req.params.id : null);
     if (!taskId) {
@@ -89,8 +84,13 @@ exports.show = async (req, res) => {
     return res.status(200).json(sanitize(task));
 };
 
+// 4. Update Task (PATCH)
 exports.update = async (req, res) => {
     if (!req.body) req.body = {};
+
+    if (!patchTaskSchema || typeof patchTaskSchema.validate !== 'function') {
+        return res.status(500).json({ message: "Validation schema missing" });
+    }
 
     const { error, value } = patchTaskSchema.validate(req.body, {
         abortEarly: false,
@@ -112,11 +112,13 @@ exports.update = async (req, res) => {
         return res.status(404).json({ message: "Task not found" });
     }
 
+    // Mutate existing task in place
     Object.assign(task, value);
 
     return res.status(200).json(sanitize(task));
 };
 
+// 5. Delete Task
 exports.deleteTask = async (req, res) => {
     const taskId = parseTaskId(req.params ? req.params.id : null);
     if (!taskId) {
