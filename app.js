@@ -9,23 +9,12 @@ const errorHandlerMiddleware = require('./middleware/errorHandlerMiddleware');
 
 app.use(express.json());
 
-// 1. PUBLIC ROUTES & PROTECTED TASK ROUTES MUST BE FIRST
+// 1. PUBLIC ROUTES & PROTECTED TASK ROUTES
 app.use('/api/users', userRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
 
-// 2. ERROR HANDLERS MUST BE AT THE VERY BOTTOM
+// 2. ERROR HANDLERS
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
 module.exports = app;
-
-app.use((req, res, next) => {
-    res.status(404).json({ message: 'Not Found' });
-});
-
-const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
-    console.log(`Server is listening on port ${port}...`);
-});
-
-module.exports = { app, server };

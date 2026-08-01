@@ -1,8 +1,11 @@
-const schemas = require("../validation/taskSchema");
+const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Support both patchTaskSchema and updateTaskSchema names safely
-const taskSchema = schemas.taskSchema;
-const patchTaskSchema = schemas.patchTaskSchema || schemas.updateTaskSchema || taskSchema;
+// Dedicated helper required by assignment spec
+const taskCounter = () => {
+    const tasks = global.tasks || [];
+    if (tasks.length === 0) return 1;
+    return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
+};
 
 // Helper: Remove userId from API responses
 const sanitize = (task) => {
@@ -21,7 +24,7 @@ const parseTaskId = (idParam) => {
     return num;
 };
 
-// Helper: Strict task ownership check using global.user_id.email per AirHub instructions
+// Helper: Strict task ownership check using global.user_id.email
 const isTaskOwner = (task) => {
     if (!task || !global.user_id || !global.user_id.email) {
         return false;
@@ -35,19 +38,14 @@ exports.create = async (req, res) => {
 
     const { error, value } = taskSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
-    const tasksList = global.tasks || [];
-    const nextId =
-        tasksList.length > 0
-            ? Math.max(...tasksList.map((t) => Number(t.id) || 0)) + 1
-            : 1;
-
     const newTask = {
-        id: nextId,
+        id: taskCounter(),
         userId: global.user_id ? global.user_id.email : null,
-        ...value,
+        title: value.title,
+        isCompleted: value.isCompleted ?? false
     };
 
     if (!global.tasks) global.tasks = [];
@@ -88,15 +86,10 @@ exports.show = async (req, res) => {
 exports.update = async (req, res) => {
     if (!req.body) req.body = {};
 
-    if (!patchTaskSchema || typeof patchTaskSchema.validate !== 'function') {
-        return res.status(500).json({ message: "Validation schema missing" });
-    }
-
-    const { error, value } = patchTaskSchema.validate(req.body, {
-        abortEarly: false,
-    });
+    const schemaToUse = patchTaskSchema || taskSchema;
+    const { error, value } = schemaToUse.validate(req.body, { abortEarly: false });
     if (error) {
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
     const taskId = parseTaskId(req.params ? req.params.id : null);
@@ -112,7 +105,6 @@ exports.update = async (req, res) => {
         return res.status(404).json({ message: "Task not found" });
     }
 
-    // Mutate existing task in place
     Object.assign(task, value);
 
     return res.status(200).json(sanitize(task));

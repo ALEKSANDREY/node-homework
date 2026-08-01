@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const { promisify } = require('util');
-// Ensure this path matches where your user Joi schema lives:
 const { userSchema } = require('../validation/userSchema');
 
 const scrypt = promisify(crypto.scrypt);
@@ -21,13 +20,14 @@ const comparePassword = async (password, hashedPassword) => {
 exports.register = async (req, res) => {
     if (!req.body) req.body = {};
 
-    // 1. Validate with Joi schema
-    const { error } = userSchema.validate(req.body);
+    // 1. Validate with Joi schema (abortEarly: false)
+    const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
         return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { name, email, password } = req.body;
+    // Build user from validated value, not req.body directly
+    const { name, email, password } = value;
 
     if (!global.users) global.users = [];
 
