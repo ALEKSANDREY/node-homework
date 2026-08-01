@@ -20,13 +20,11 @@ const comparePassword = async (password, hashedPassword) => {
 exports.register = async (req, res) => {
     if (!req.body) req.body = {};
 
-    // 1. Validate with Joi schema (abortEarly: false)
     const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
         return res.status(400).json({ message: error.details[0].message });
     }
 
-    // Build user from validated value, not req.body directly
     const { name, email, password } = value;
 
     if (!global.users) global.users = [];

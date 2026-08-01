@@ -2,7 +2,7 @@ const Joi = require('joi');
 
 const taskSchema = Joi.object({
     title: Joi.string().min(3).max(30).required(),
-    isCompleted: Joi.boolean().default(false).invalid(null)
+    isCompleted: Joi.boolean().invalid(null).default(false)
 });
 
 const patchTaskSchema = Joi.object({

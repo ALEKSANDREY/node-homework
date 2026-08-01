@@ -1,20 +1,17 @@
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Dedicated helper required by assignment spec
 const taskCounter = () => {
     const tasks = global.tasks || [];
     if (tasks.length === 0) return 1;
     return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
 };
 
-// Helper: Remove userId from API responses
 const sanitize = (task) => {
     if (!task) return null;
     const { userId, ...rest } = task;
     return rest;
 };
 
-// Helper: Validate task ID from params (accepts positive integers or numeric strings)
 const parseTaskId = (idParam) => {
     if (idParam === undefined || idParam === null) return null;
     const num = Number(idParam);
@@ -24,7 +21,6 @@ const parseTaskId = (idParam) => {
     return num;
 };
 
-// Helper: Strict task ownership check using global.user_id.email
 const isTaskOwner = (task) => {
     if (!task || !global.user_id || !global.user_id.email) {
         return false;
