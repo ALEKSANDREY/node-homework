@@ -1,17 +1,20 @@
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
+// Required helper function
 const taskCounter = () => {
     const tasks = global.tasks || [];
     if (tasks.length === 0) return 1;
     return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
 };
 
+// Helper: Remove userId from response
 const sanitize = (task) => {
     if (!task) return null;
     const { userId, ...rest } = task;
     return rest;
 };
 
+// Helper: Parse ID safely
 const parseTaskId = (idParam) => {
     if (idParam === undefined || idParam === null) return null;
     const num = Number(idParam);
@@ -21,14 +24,22 @@ const parseTaskId = (idParam) => {
     return num;
 };
 
-const isTaskOwner = (task) => {
-    if (!task || !global.user_id || !global.user_id.email) {
-        return false;
-    }
-    return task.userId === global.user_id.email;
+// Helper: Get user email safely
+const getUserEmail = () => {
+    if (!global.user_id) return null;
+    if (typeof global.user_id === 'object') return global.user_id.email || null;
+    if (typeof global.user_id === 'string') return global.user_id;
+    return null;
 };
 
-// 1. Create Task
+// Helper: Check task ownership via email
+const isTaskOwner = (task) => {
+    const email = getUserEmail();
+    if (!task || !email) return false;
+    return task.userId === email;
+};
+
+// 1. Create Task (POST /api/tasks)
 exports.create = async (req, res) => {
     if (!req.body) req.body = {};
 
@@ -39,7 +50,7 @@ exports.create = async (req, res) => {
 
     const newTask = {
         id: taskCounter(),
-        userId: global.user_id ? global.user_id.email : null,
+        userId: getUserEmail(),
         title: value.title,
         isCompleted: value.isCompleted ?? false
     };
@@ -49,7 +60,7 @@ exports.create = async (req, res) => {
     return res.status(201).json(sanitize(newTask));
 };
 
-// 2. Index Tasks
+// 2. Index Tasks (GET /api/tasks)
 exports.index = async (req, res) => {
     const userTasks = (global.tasks || []).filter((t) => isTaskOwner(t));
 
@@ -60,7 +71,7 @@ exports.index = async (req, res) => {
     return res.status(200).json(userTasks.map(sanitize));
 };
 
-// 3. Show Task
+// 3. Show Task (GET /api/tasks/:id)
 exports.show = async (req, res) => {
     const taskId = parseTaskId(req.params ? req.params.id : null);
     if (!taskId) {
@@ -78,12 +89,13 @@ exports.show = async (req, res) => {
     return res.status(200).json(sanitize(task));
 };
 
-// 4. Update Task (PATCH)
+// 4. Update Task (PATCH /api/tasks/:id)
 exports.update = async (req, res) => {
-    if (!req.body) req.body = {};
+    if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ message: "Request body cannot be empty" });
+    }
 
-    const schemaToUse = patchTaskSchema || taskSchema;
-    const { error, value } = schemaToUse.validate(req.body, { abortEarly: false });
+    const { error, value } = patchTaskSchema.validate(req.body, { abortEarly: false });
     if (error) {
         return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
@@ -106,7 +118,7 @@ exports.update = async (req, res) => {
     return res.status(200).json(sanitize(task));
 };
 
-// 5. Delete Task
+// 5. Delete Task (DELETE /api/tasks/:id)
 exports.deleteTask = async (req, res) => {
     const taskId = parseTaskId(req.params ? req.params.id : null);
     if (!taskId) {
