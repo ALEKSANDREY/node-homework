@@ -1,84 +1,93 @@
-const crypto = require('crypto');
-const { promisify } = require('util');
-const { userSchema } = require('../validation/userSchema');
+const pool = require("../db/pg-pool");
+const crypto = require("crypto");
+const { promisify } = require("util");
+const { userSchema } = require("../validation/userSchema");
 
 const scrypt = promisify(crypto.scrypt);
 
+/**
+ * Generates a salt and hashes a plaintext password using crypto.scrypt.
+ * @param {string} password
+ * @returns {Promise<string>} Salt and hash joined by a colon separator.
+ */
 const hashPassword = async (password) => {
-    const salt = crypto.randomBytes(16).toString('hex');
+    const salt = crypto.randomBytes(16).toString("hex");
     const derivedKey = await scrypt(password, salt, 64);
-    return `${salt}:${derivedKey.toString('hex')}`;
+    return `${salt}:${derivedKey.toString("hex")}`;
 };
 
+/**
+ * Verifies a plaintext password against a stored salt-hash value.
+ * Uses timingSafeEqual to guard against timing attacks.
+ */
 const comparePassword = async (password, hashedPassword) => {
-    if (!hashedPassword || !hashedPassword.includes(':')) return false;
-    const [salt, key] = hashedPassword.split(':');
+    if (!hashedPassword || !hashedPassword.includes(":")) return false;
+    const [salt, key] = hashedPassword.split(":");
     const derivedKey = await scrypt(password, salt, 64);
-    return crypto.timingSafeEqual(Buffer.from(key, 'hex'), derivedKey);
+    return crypto.timingSafeEqual(Buffer.from(key, "hex"), derivedKey);
 };
 
-exports.register = async (req, res) => {
+/**
+ * Handles user registration.
+ * Validates request payload, hashes password, and persists user record to PostgreSQL.
+ */
+exports.register = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
 
     const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        return res.status(400).json({ message: error.details[0].message });
+        return res.status(400).json({ message: "Validation failed", details: error.details });
     }
 
-    const { name, email, password } = value;
+    try {
+        const hashedPassword = await hashPassword(value.password);
+        const result = await pool.query(
+            `INSERT INTO users (email, name, hashed_password) VALUES ($1, $2, $3) RETURNING id, email, name`,
+            [value.email, value.name, hashedPassword]
+        );
 
-    if (!global.users) global.users = [];
+        const newUser = result.rows[0];
+        global.user_id = newUser.id;
 
-    const existingUser = global.users.find(u => u.email === email);
-    if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
+        return res.status(201).json({ id: newUser.id, name: newUser.name, email: newUser.email });
+    } catch (e) {
+        if (e.code === "23505") {
+            return res.status(400).json({ message: "Email already registered" });
+        }
+        if (typeof next === "function") return next(e);
     }
-
-    const hashedPassword = await hashPassword(password);
-    const nextId = global.users.length > 0 ? Math.max(...global.users.map(u => Number(u.id) || 0)) + 1 : 1;
-
-    const newUser = {
-        id: nextId,
-        name,
-        email,
-        hashedPassword
-    };
-
-    global.users.push(newUser);
-    global.user_id = newUser;
-
-    return res.status(201).json({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email
-    });
 };
 
-exports.logon = async (req, res) => {
+/**
+ * Handles user authentication.
+ * Validates credentials against persistent user database records.
+ */
+exports.logon = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
     const { email, password } = req.body;
 
-    if (!global.users) global.users = [];
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+        if (result.rows.length === 0) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
 
-    const user = global.users.find(u => u.email === email);
-    if (!user) {
-        return res.status(401).json({ message: "Invalid credentials" });
+        const user = result.rows[0];
+        const isValid = await comparePassword(password, user.hashed_password);
+        if (!isValid) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        global.user_id = user.id;
+        return res.status(200).json({ id: user.id, name: user.name, email: user.email });
+    } catch (err) {
+        if (typeof next === "function") return next(err);
     }
-
-    const isValid = await comparePassword(password, user.hashedPassword);
-    if (!isValid) {
-        return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    global.user_id = user;
-
-    return res.status(200).json({
-        id: user.id,
-        name: user.name,
-        email: user.email
-    });
 };
 
+/**
+ * Clears active session user identifier.
+ */
 exports.logoff = async (req, res) => {
     global.user_id = null;
     return res.status(200).json({ message: "Logged off successfully" });
