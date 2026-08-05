@@ -1,27 +1,20 @@
-// app.js
-const express = require("express");
+const express = require('express');
 const app = express();
 
-const userRouter = require("./routes/userRoutes");
-const notFoundMiddleware = require("./middleware/not-found");
-const errorHandlerMiddleware = require("./middleware/error-handler");
+const userRouter = require('./routes/userRoutes');
+const taskRouter = require('./routes/taskRoutes');
+const authMiddleware = require('./middleware/auth');
+const notFoundMiddleware = require('./middleware/notFoundMiddleware');
+const errorHandlerMiddleware = require('./middleware/errorHandlerMiddleware');
 
-// Initialize required globals
-global.user_id = null;
-global.users = [];
-global.tasks = [];
-
-// Middleware order: JSON parser -> Routes -> 404 -> Error Handler
 app.use(express.json());
 
-app.use("/api/users", userRouter);
+// 1. PUBLIC ROUTES & PROTECTED TASK ROUTES
+app.use('/api/users', userRouter);
+app.use('/api/tasks', authMiddleware, taskRouter);
 
+// 2. ERROR HANDLERS
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
-const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
-    console.log(`Server is listening on port ${port}...`);
-});
-
-module.exports = { app, server };
+module.exports = app;
