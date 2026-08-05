@@ -90,24 +90,24 @@ exports.update = async (req, res, next = () => {}) => {
     }
 
     try {
-        // Fetch current task first
-        const existing = await pool.query(
-            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
-            [taskId, global.user_id]
-        );
+        const query = `
+            UPDATE tasks 
+            SET title = COALESCE($1, title), 
+                is_completed = COALESCE($2, is_completed)
+            WHERE id = $3 AND user_id = $4 
+            RETURNING id, title, is_completed
+        `;
 
-        if (existing.rows.length === 0) {
+        const result = await pool.query(query, [
+            value.title !== undefined ? value.title : null,
+            value.isCompleted !== undefined ? value.isCompleted : null,
+            taskId,
+            global.user_id
+        ]);
+
+        if (result.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
-
-        const currentTask = existing.rows[0];
-        const updatedTitle = value.title !== undefined ? value.title : currentTask.title;
-        const updatedCompleted = value.isCompleted !== undefined ? value.isCompleted : currentTask.is_completed;
-
-        const result = await pool.query(
-            "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
-            [updatedTitle, updatedCompleted, taskId, global.user_id]
-        );
 
         return res.status(200).json(result.rows[0]);
     } catch (err) {

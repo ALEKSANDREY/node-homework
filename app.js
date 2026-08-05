@@ -26,17 +26,17 @@ app.get("/health", async (req, res) => {
 /**
  * Global centralized error handling middleware.
  */
+// app.js error handling middleware
+/**
+ * Global centralized error handling middleware.
+ */
 app.use((err, req, res, next) => {
-    let status = err.status || 500;
-    let message = err.message || "Internal Server Error";
-
-    // Handle database connection errors specifically in response
-    if (err.code === "ECONNREFUSED" || err.code === "57P01") {
-        message = "db not connected";
-        status = 500;
+    if (err.code === 'ECONNREFUSED' || err.code === '57P03') {
+        return res.status(500).json({ message: 'Database connection failed' });
     }
 
-    res.status(status).json({ message });
+    const statusCode = err.status || err.statusCode || 500;
+    res.status(statusCode).json({ message: err.message || 'Internal Server Error' });
 });
 
 /**
