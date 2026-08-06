@@ -27,7 +27,6 @@ exports.register = async (req, res) => {
 
     const { name, email, password } = value;
 
-    if (!global.users) global.users = [];
 
     const existingUser = global.users.find(u => u.email === email);
     if (existingUser) {
@@ -57,8 +56,6 @@ exports.register = async (req, res) => {
 exports.logon = async (req, res) => {
     if (!req.body) req.body = {};
     const { email, password } = req.body;
-
-    if (!global.users) global.users = [];
 
     const user = global.users.find(u => u.email === email);
     if (!user) {

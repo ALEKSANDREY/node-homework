@@ -1,11 +1,7 @@
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Required helper function
-const taskCounter = () => {
-    const tasks = global.tasks || [];
-    if (tasks.length === 0) return 1;
-    return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
-};
+// Core Task 6: Simple incrementing counter starting from 0
+let taskCounter = 0;
 
 // Helper: Remove userId from response
 const sanitize = (task) => {
@@ -48,8 +44,11 @@ exports.create = async (req, res) => {
         return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
+    // Increment counter for every new task
+    taskCounter += 1;
+
     const newTask = {
-        id: taskCounter(),
+        id: taskCounter,
         userId: getUserEmail(),
         title: value.title,
         isCompleted: value.isCompleted ?? false
@@ -57,6 +56,7 @@ exports.create = async (req, res) => {
 
     if (!global.tasks) global.tasks = [];
     global.tasks.push(newTask);
+
     return res.status(201).json(sanitize(newTask));
 };
 

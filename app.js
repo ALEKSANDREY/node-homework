@@ -7,13 +7,20 @@ const authMiddleware = require('./middleware/auth');
 const notFoundMiddleware = require('./middleware/notFoundMiddleware');
 const errorHandlerMiddleware = require('./middleware/errorHandlerMiddleware');
 
+// Initialize globals explicitly at the top of app.js
+global.users = global.users || [];
+global.tasks = global.tasks || [];
+global.user_id = global.user_id || null;
+
 app.use(express.json());
 
-// 1. PUBLIC ROUTES & PROTECTED TASK ROUTES
+// Public User Routes
 app.use('/api/users', userRouter);
+
+// Protected Task Routes
 app.use('/api/tasks', authMiddleware, taskRouter);
 
-// 2. ERROR HANDLERS
+// Error Middlewares
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
