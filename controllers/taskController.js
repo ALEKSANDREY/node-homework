@@ -1,7 +1,11 @@
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Core Task 6: Simple incrementing counter starting from 0
-let taskCounter = 0;
+// Define taskCounter as a function returning the next task ID
+let currentId = 0;
+const taskCounter = () => {
+    currentId += 1;
+    return currentId;
+};
 
 // Helper: Remove userId from response
 const sanitize = (task) => {
@@ -44,11 +48,8 @@ exports.create = async (req, res) => {
         return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
-    // Increment counter for every new task
-    taskCounter += 1;
-
     const newTask = {
-        id: taskCounter,
+        id: taskCounter(), // Called as a function
         userId: getUserEmail(),
         title: value.title,
         isCompleted: value.isCompleted ?? false

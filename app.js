@@ -4,10 +4,10 @@ const app = express();
 const userRouter = require('./routes/userRoutes');
 const taskRouter = require('./routes/taskRoutes');
 const authMiddleware = require('./middleware/auth');
-const notFoundMiddleware = require('./middleware/notFoundMiddleware');
-const errorHandlerMiddleware = require('./middleware/errorHandlerMiddleware');
+// Match exact file names in middleware/ directory:
+const notFoundMiddleware = require('./middleware/not-found');
+const errorHandlerMiddleware = require('./middleware/error-handler');
 
-// Initialize globals explicitly at the top of app.js
 global.users = global.users || [];
 global.tasks = global.tasks || [];
 global.user_id = global.user_id || null;
