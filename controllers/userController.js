@@ -5,21 +5,12 @@ const { userSchema } = require("../validation/userSchema");
 
 const scrypt = promisify(crypto.scrypt);
 
-/**
- * Generates a salt and hashes a plaintext password using crypto.scrypt.
- * @param {string} password
- * @returns {Promise<string>} Salt and hash joined by a colon separator.
- */
 const hashPassword = async (password) => {
     const salt = crypto.randomBytes(16).toString("hex");
     const derivedKey = await scrypt(password, salt, 64);
     return `${salt}:${derivedKey.toString("hex")}`;
 };
 
-/**
- * Verifies a plaintext password against a stored salt-hash value.
- * Uses timingSafeEqual to guard against timing attacks.
- */
 const comparePassword = async (password, hashedPassword) => {
     if (!hashedPassword || !hashedPassword.includes(":")) return false;
     const [salt, key] = hashedPassword.split(":");
@@ -27,10 +18,6 @@ const comparePassword = async (password, hashedPassword) => {
     return crypto.timingSafeEqual(Buffer.from(key, "hex"), derivedKey);
 };
 
-/**
- * Handles user registration.
- * Validates request payload, hashes password, and persists user record to PostgreSQL.
- */
 exports.register = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
 
@@ -58,10 +45,6 @@ exports.register = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Handles user authentication.
- * Validates credentials against persistent user database records.
- */
 exports.logon = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
     const { email, password } = req.body;
@@ -85,9 +68,6 @@ exports.logon = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Clears active session user identifier.
- */
 exports.logoff = async (req, res) => {
     global.user_id = null;
     return res.status(200).json({ message: "Logged off successfully" });

@@ -1,9 +1,6 @@
 const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-/**
- * Helper to safely extract task ID from req.params or req.body/req.
- */
 const getTaskId = (req) => {
     if (req.params && req.params.id !== undefined) return parseInt(req.params.id, 10);
     if (req.body && req.body.id !== undefined) return parseInt(req.body.id, 10);
@@ -11,9 +8,6 @@ const getTaskId = (req) => {
     return NaN;
 };
 
-/**
- * Creates a new task.
- */
 exports.create = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
 
@@ -33,10 +27,6 @@ exports.create = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Retrieves all tasks associated with the authenticated user ID.
- * NOTE: The course test explicitly expects 404 when array length is 0!
- */
 exports.index = async (req, res, next = () => {}) => {
     try {
         const result = await pool.query(
@@ -53,9 +43,6 @@ exports.index = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Retrieves a single task by task ID.
- */
 exports.show = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
 
@@ -74,9 +61,6 @@ exports.show = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Updates a task while validating resource ownership.
- */
 exports.update = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
 
@@ -90,24 +74,23 @@ exports.update = async (req, res, next = () => {}) => {
     }
 
     try {
-        const query = `
-            UPDATE tasks 
-            SET title = COALESCE($1, title), 
-                is_completed = COALESCE($2, is_completed)
-            WHERE id = $3 AND user_id = $4 
-            RETURNING id, title, is_completed
-        `;
+        const existing = await pool.query(
+            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
+            [taskId, global.user_id]
+        );
 
-        const result = await pool.query(query, [
-            value.title !== undefined ? value.title : null,
-            value.isCompleted !== undefined ? value.isCompleted : null,
-            taskId,
-            global.user_id
-        ]);
-
-        if (result.rows.length === 0) {
+        if (existing.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
+
+        const currentTask = existing.rows[0];
+        const updatedTitle = value.title !== undefined ? value.title : currentTask.title;
+        const updatedCompleted = value.isCompleted !== undefined ? value.isCompleted : currentTask.is_completed;
+
+        const result = await pool.query(
+            "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
+            [updatedTitle, updatedCompleted, taskId, global.user_id]
+        );
 
         return res.status(200).json(result.rows[0]);
     } catch (err) {
@@ -115,9 +98,6 @@ exports.update = async (req, res, next = () => {}) => {
     }
 };
 
-/**
- * Removes a task owned by the current authenticated user.
- */
 exports.deleteTask = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
 

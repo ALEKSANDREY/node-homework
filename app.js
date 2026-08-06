@@ -31,12 +31,14 @@ app.get("/health", async (req, res) => {
  * Global centralized error handling middleware.
  */
 app.use((err, req, res, next) => {
-    if (err.code === 'ECONNREFUSED' || err.code === '57P03') {
-        return res.status(500).json({ message: 'Database connection failed' });
+    // Database refusal check specified by lesson/instructions
+    if (err.code === 'ECONNREFUSED' || err.message?.includes('connect ECONNREFUSED')) {
+        return res.status(500).json({ error: 'Database connection failed' });
     }
 
-    const statusCode = err.status || err.statusCode || 500;
-    res.status(statusCode).json({ message: err.message || 'Internal Server Error' });
+    // General error handling
+    const status = err.status || 500;
+    res.status(status).json({ error: err.message || 'Internal Server Error' });
 });
 
 /**
