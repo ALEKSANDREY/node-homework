@@ -6,6 +6,7 @@ const userSchema = Joi.object({
     password: Joi.string()
         .min(8)
         .max(30)
+        .invalid("password", "123456", "qwerty")
         .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
         .required()
 });

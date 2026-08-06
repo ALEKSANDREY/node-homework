@@ -1,10 +1,10 @@
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Required helper function
+// Define taskCounter as a function returning the next task ID
+let currentId = 0;
 const taskCounter = () => {
-    const tasks = global.tasks || [];
-    if (tasks.length === 0) return 1;
-    return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
+    currentId += 1;
+    return currentId;
 };
 
 // Helper: Remove userId from response
@@ -49,7 +49,7 @@ exports.create = async (req, res) => {
     }
 
     const newTask = {
-        id: taskCounter(),
+        id: taskCounter(), // Called as a function
         userId: getUserEmail(),
         title: value.title,
         isCompleted: value.isCompleted ?? false
@@ -57,6 +57,7 @@ exports.create = async (req, res) => {
 
     if (!global.tasks) global.tasks = [];
     global.tasks.push(newTask);
+
     return res.status(201).json(sanitize(newTask));
 };
 
