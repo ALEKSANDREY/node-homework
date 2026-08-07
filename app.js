@@ -1,55 +1,44 @@
-const express = require("express");
+const express = require('express');
 const app = express();
+const pool = require('./db/pg-pool');
 
-const pool = require("./db/pg-pool");
+const userRouter = require('./routes/userRoutes');
+const taskRouter = require('./routes/taskRoutes');
+const authMiddleware = require('./middleware/auth');
+const notFoundMiddleware = require('./middleware/not-found');
+
+global.users = global.users || [];
+global.tasks = global.tasks || [];
+global.user_id = global.user_id || null;
 
 app.use(express.json());
 
-// Routes must be active
-const userRoutes = require("./routes/userRoutes");
-const taskRoutes = require("./routes/taskRoutes");
-app.use("/api/users", userRoutes);
-app.use("/api/tasks", taskRoutes);
-
-/**
- * Health check endpoint to verify database connectivity.
- */
-app.get("/health", async (req, res) => {
+// Health check endpoint
+app.get('/health', async (req, res) => {
     try {
-        await pool.query("SELECT 1");
-        res.json({ status: "ok", db: "connected" });
+        await pool.query('SELECT 1');
+        res.status(200).json({ status: 'ok', database: 'connected' });
     } catch (err) {
-        res.status(500).json({ message: `db not connected, error: ${err.message}` });
+        res.status(500).json({ status: 'error', database: 'disconnected' });
     }
 });
 
-/**
- * Global centralized error handling middleware.
- */
-// app.js error handling middleware
-/**
- * Global centralized error handling middleware.
- */
+// Routes
+app.use('/api/users', userRouter);
+app.use('/api/tasks', authMiddleware, taskRouter);
+
+// 404 Handler
+app.use(notFoundMiddleware);
+
+// Centralized Error Handler Middleware
 app.use((err, req, res, next) => {
-    // Database refusal check specified by lesson/instructions
+    // Check for database refusal at the top of error handler
     if (err.code === 'ECONNREFUSED' || err.message?.includes('connect ECONNREFUSED')) {
-        return res.status(500).json({ error: 'Database connection failed' });
+        return res.status(500).json({ message: 'Database connection refused' });
     }
 
-    // General error handling
-    const status = err.status || 500;
-    res.status(status).json({ error: err.message || 'Internal Server Error' });
+    const status = err.status || err.statusCode || 500;
+    return res.status(status).json({ message: err.message || 'Internal Server Error' });
 });
-
-/**
- * Graceful shutdown process for active database pool connections.
- */
-const gracefulShutdown = async () => {
-    await pool.end();
-    process.exit(0);
-};
-
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
 
 module.exports = app;

@@ -8,14 +8,13 @@ const getTaskId = (req) => {
     return NaN;
 };
 
-// Formats response to satisfy both isCompleted and is_completed (as expected on line 165 of assignment5b.test.js)
+// Map DB row to Task object shape
 const formatTask = (row) => {
     if (!row) return null;
     return {
         id: row.id,
         title: row.title,
-        isCompleted: row.is_completed,
-        is_completed: row.is_completed
+        isCompleted: row.is_completed
     };
 };
 
@@ -47,9 +46,6 @@ exports.index = async (req, res, next = () => {}) => {
             [userId]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "No tasks found" });
-        }
         return res.status(200).json(result.rows.map(formatTask));
     } catch (err) {
         if (typeof next === "function") return next(err);
@@ -89,23 +85,29 @@ exports.update = async (req, res, next = () => {}) => {
 
     try {
         const userId = parseInt(global.user_id, 10);
-        const existing = await pool.query(
-            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
-            [taskId, userId]
-        );
 
-        if (existing.rows.length === 0) {
-            return res.status(404).json({ message: "Task not found" });
+        // Single update query with dynamic field assignment filtered by taskId and userId
+        const fields = [];
+        const values = [];
+        let index = 1;
+
+        if (value.title !== undefined) {
+            fields.push(`title = $${index++}`);
+            values.push(value.title);
+        }
+        if (value.isCompleted !== undefined) {
+            fields.push(`is_completed = $${index++}`);
+            values.push(value.isCompleted);
         }
 
-        const currentTask = existing.rows[0];
-        const updatedTitle = value.title !== undefined ? value.title : currentTask.title;
-        const updatedCompleted = value.isCompleted !== undefined ? value.isCompleted : currentTask.is_completed;
+        values.push(taskId, userId);
+        const queryText = `UPDATE tasks SET ${fields.join(', ')} WHERE id = $${index++} AND user_id = $${index++} RETURNING id, title, is_completed`;
 
-        const result = await pool.query(
-            "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
-            [updatedTitle, updatedCompleted, taskId, userId]
-        );
+        const result = await pool.query(queryText, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Task not found" });
+        }
 
         return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
