@@ -8,6 +8,17 @@ const getTaskId = (req) => {
     return NaN;
 };
 
+// Formats response to satisfy both isCompleted and is_completed (as expected on line 165 of assignment5b.test.js)
+const formatTask = (row) => {
+    if (!row) return null;
+    return {
+        id: row.id,
+        title: row.title,
+        isCompleted: row.is_completed,
+        is_completed: row.is_completed
+    };
+};
+
 exports.create = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
 
@@ -17,11 +28,12 @@ exports.create = async (req, res, next = () => {}) => {
     }
 
     try {
+        const userId = parseInt(global.user_id, 10);
         const result = await pool.query(
             `INSERT INTO tasks (title, is_completed, user_id) VALUES ($1, $2, $3) RETURNING id, title, is_completed`,
-            [value.title, value.isCompleted ?? false, global.user_id]
+            [value.title, value.isCompleted ?? false, userId]
         );
-        return res.status(201).json(result.rows[0]);
+        return res.status(201).json(formatTask(result.rows[0]));
     } catch (err) {
         if (typeof next === "function") return next(err);
     }
@@ -29,15 +41,16 @@ exports.create = async (req, res, next = () => {}) => {
 
 exports.index = async (req, res, next = () => {}) => {
     try {
+        const userId = parseInt(global.user_id, 10);
         const result = await pool.query(
             "SELECT id, title, is_completed FROM tasks WHERE user_id = $1",
-            [global.user_id]
+            [userId]
         );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ message: "No tasks found" });
         }
-        return res.status(200).json(result.rows);
+        return res.status(200).json(result.rows.map(formatTask));
     } catch (err) {
         if (typeof next === "function") return next(err);
     }
@@ -47,15 +60,16 @@ exports.show = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
 
     try {
+        const userId = parseInt(global.user_id, 10);
         const result = await pool.query(
             "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
-            [taskId, global.user_id]
+            [taskId, userId]
         );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
-        return res.status(200).json(result.rows[0]);
+        return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
         if (typeof next === "function") return next(err);
     }
@@ -74,9 +88,10 @@ exports.update = async (req, res, next = () => {}) => {
     }
 
     try {
+        const userId = parseInt(global.user_id, 10);
         const existing = await pool.query(
             "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
-            [taskId, global.user_id]
+            [taskId, userId]
         );
 
         if (existing.rows.length === 0) {
@@ -89,10 +104,10 @@ exports.update = async (req, res, next = () => {}) => {
 
         const result = await pool.query(
             "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
-            [updatedTitle, updatedCompleted, taskId, global.user_id]
+            [updatedTitle, updatedCompleted, taskId, userId]
         );
 
-        return res.status(200).json(result.rows[0]);
+        return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
         if (typeof next === "function") return next(err);
     }
@@ -102,15 +117,16 @@ exports.deleteTask = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
 
     try {
+        const userId = parseInt(global.user_id, 10);
         const result = await pool.query(
             "DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING id, title, is_completed",
-            [taskId, global.user_id]
+            [taskId, userId]
         );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
-        return res.status(200).json(result.rows[0]);
+        return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
         if (typeof next === "function") return next(err);
     }
