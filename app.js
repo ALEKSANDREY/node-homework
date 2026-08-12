@@ -32,7 +32,6 @@ app.use(notFoundMiddleware);
 
 // Centralized Error Handler Middleware
 app.use((err, req, res, next) => {
-    // Check for database refusal at the top of error handler
     if (err.code === 'ECONNREFUSED' || err.message?.includes('connect ECONNREFUSED')) {
         return res.status(500).json({ message: 'Database connection refused' });
     }

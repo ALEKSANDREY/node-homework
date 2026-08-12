@@ -1,20 +1,29 @@
 const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
+// Safe ID Parser (returns NaN if non-integer or invalid)
 const getTaskId = (req) => {
-    if (req.params && req.params.id !== undefined) return parseInt(req.params.id, 10);
-    if (req.body && req.body.id !== undefined) return parseInt(req.body.id, 10);
-    if (req.id !== undefined) return parseInt(req.id, 10);
-    return NaN;
+    let rawId;
+    if (req.params && req.params.id !== undefined) rawId = req.params.id;
+    else if (req.body && req.body.id !== undefined) rawId = req.body.id;
+    else if (req.id !== undefined) rawId = req.id;
+
+    if (rawId === undefined || rawId === null) return NaN;
+    const num = Number(rawId);
+    if (isNaN(num) || !Number.isInteger(num) || num <= 0) {
+        return NaN;
+    }
+    return num;
 };
 
-// Map DB row to Task object shape
+// Returns both camelCase and snake_case properties for compatibility
 const formatTask = (row) => {
     if (!row) return null;
     return {
         id: row.id,
         title: row.title,
-        isCompleted: row.is_completed
+        isCompleted: row.is_completed,
+        is_completed: row.is_completed
     };
 };
 
@@ -46,6 +55,9 @@ exports.index = async (req, res, next = () => {}) => {
             [userId]
         );
 
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "No tasks found" });
+        }
         return res.status(200).json(result.rows.map(formatTask));
     } catch (err) {
         if (typeof next === "function") return next(err);
@@ -54,6 +66,9 @@ exports.index = async (req, res, next = () => {}) => {
 
 exports.show = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
+        return res.status(404).json({ message: "Task not found" });
+    }
 
     try {
         const userId = parseInt(global.user_id, 10);
@@ -73,6 +88,9 @@ exports.show = async (req, res, next = () => {}) => {
 
 exports.update = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
+        return res.status(404).json({ message: "Task not found" });
+    }
 
     if (!req.body || Object.keys(req.body).length === 0) {
         return res.status(400).json({ message: "Request body cannot be empty" });
@@ -86,28 +104,23 @@ exports.update = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(global.user_id, 10);
 
-        // Single update query with dynamic field assignment filtered by taskId and userId
-        const fields = [];
-        const values = [];
-        let index = 1;
+        const existing = await pool.query(
+            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
+            [taskId, userId]
+        );
 
-        if (value.title !== undefined) {
-            fields.push(`title = $${index++}`);
-            values.push(value.title);
-        }
-        if (value.isCompleted !== undefined) {
-            fields.push(`is_completed = $${index++}`);
-            values.push(value.isCompleted);
-        }
-
-        values.push(taskId, userId);
-        const queryText = `UPDATE tasks SET ${fields.join(', ')} WHERE id = $${index++} AND user_id = $${index++} RETURNING id, title, is_completed`;
-
-        const result = await pool.query(queryText, values);
-
-        if (result.rows.length === 0) {
+        if (existing.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
+
+        const currentTask = existing.rows[0];
+        const updatedTitle = value.title !== undefined ? value.title : currentTask.title;
+        const updatedCompleted = value.isCompleted !== undefined ? value.isCompleted : currentTask.is_completed;
+
+        const result = await pool.query(
+            "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
+            [updatedTitle, updatedCompleted, taskId, userId]
+        );
 
         return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
@@ -117,6 +130,9 @@ exports.update = async (req, res, next = () => {}) => {
 
 exports.deleteTask = async (req, res, next = () => {}) => {
     const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
+        return res.status(404).json({ message: "Task not found" });
+    }
 
     try {
         const userId = parseInt(global.user_id, 10);

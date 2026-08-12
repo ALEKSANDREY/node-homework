@@ -28,6 +28,12 @@ exports.register = async (req, res, next = () => {}) => {
 
     try {
         const hashedPassword = await hashPassword(value.password);
+
+        const checkUser = await pool.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [value.email]);
+        if (checkUser.rows.length > 0) {
+            return res.status(400).json({ message: "Email already registered" });
+        }
+
         const result = await pool.query(
             `INSERT INTO users (email, name, hashed_password) VALUES ($1, $2, $3) RETURNING id, email, name`,
             [value.email, value.name, hashedPassword]
@@ -50,7 +56,7 @@ exports.logon = async (req, res, next = () => {}) => {
     const { email, password } = req.body;
 
     try {
-        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+        const result = await pool.query("SELECT * FROM users WHERE LOWER(email) = LOWER($1)", [email]);
         if (result.rows.length === 0) {
             return res.status(401).json({ message: "Invalid credentials" });
         }
