@@ -27,7 +27,7 @@ exports.register = async (req, res, next = () => {}) => {
     }
 
     try {
-        // Clean up stale test data when starting the test suite (when global.user_id is null)
+        // Clears stale test database rows when starting the test suite
         if (global.user_id === null && value.email === "jim@sample.com") {
             await pool.query("DELETE FROM tasks;");
             await pool.query("DELETE FROM users;");
