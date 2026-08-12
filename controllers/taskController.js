@@ -1,7 +1,6 @@
 const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Safely parses task ID; returns NaN if non-numeric string like "abs"
 const getTaskId = (req) => {
     let rawId;
     if (req.params && req.params.id !== undefined) rawId = req.params.id;
@@ -16,7 +15,6 @@ const getTaskId = (req) => {
     return num;
 };
 
-// Formats task output without returning user_id
 const formatTask = (row) => {
     if (!row) return null;
     return {
@@ -104,7 +102,6 @@ exports.update = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(global.user_id, 10);
 
-        // Dynamic update query building as described in Section 3g of Assignment 5b instructions
         let keys = Object.keys(value);
         keys = keys.map((key) => key === "isCompleted" ? "is_completed" : key);
         const setClauses = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
