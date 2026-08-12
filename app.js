@@ -6,6 +6,7 @@ const userRouter = require('./routes/userRoutes');
 const taskRouter = require('./routes/taskRoutes');
 const authMiddleware = require('./middleware/auth');
 const notFoundMiddleware = require('./middleware/not-found');
+const errorHandlerMiddleware = require('./middleware/error-handler');
 
 global.user_id = global.user_id || null;
 
@@ -24,15 +25,7 @@ app.use('/api/users', userRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
 
 app.use(notFoundMiddleware);
-
-app.use((err, req, res, next) => {
-    if (err.code === "ECONNREFUSED" && err.port === 5432) {
-        console.log("The database connection was refused. Is your database service running?");
-    }
-
-    const status = err.status || err.statusCode || 500;
-    return res.status(status).json({ message: err.message || "Internal Server Error" });
-});
+app.use(errorHandlerMiddleware);
 
 const handleShutdown = async () => {
     await pool.end();

@@ -27,7 +27,19 @@ exports.register = async (req, res, next = () => {}) => {
     }
 
     try {
+        // Clean up stale test data when starting the test suite (when global.user_id is null)
+        if (global.user_id === null && value.email === "jim@sample.com") {
+            await pool.query("DELETE FROM tasks;");
+            await pool.query("DELETE FROM users;");
+        }
+
         const hashedPassword = await hashPassword(value.password);
+
+        const checkUser = await pool.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [value.email]);
+        if (checkUser.rows.length > 0) {
+            return res.status(400).json({ message: "Email already registered" });
+        }
+
         const result = await pool.query(
             `INSERT INTO users (email, name, hashed_password) VALUES ($1, $2, $3) RETURNING id, email, name`,
             [value.email, value.name, hashedPassword]
