@@ -3,11 +3,6 @@ const crypto = require("crypto");
 const { promisify } = require("util");
 const { userSchema } = require("../validation/userSchema");
 
-// Automatically ensure test tables are clean when Jest worker starts
-if (process.env.JEST_WORKER_ID || process.env.NODE_ENV === "test") {
-    pool.query("TRUNCATE tasks, users RESTART IDENTITY CASCADE;").catch(() => {});
-}
-
 const scrypt = promisify(crypto.scrypt);
 
 const hashPassword = async (password) => {
@@ -61,7 +56,7 @@ exports.logon = async (req, res, next = () => {}) => {
     const { email, password } = req.body;
 
     try {
-        const result = await pool.query("SELECT * FROM users WHERE LOWER(email) = LOWER($1)", [email]);
+        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
         if (result.rows.length === 0) {
             return res.status(401).json({ message: "Invalid credentials" });
         }

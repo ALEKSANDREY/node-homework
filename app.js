@@ -7,19 +7,18 @@ const taskRouter = require('./routes/taskRoutes');
 const authMiddleware = require('./middleware/auth');
 const notFoundMiddleware = require('./middleware/not-found');
 
-global.users = global.users || [];
-global.tasks = global.tasks || [];
+// Only global user_id is retained as instructed
 global.user_id = global.user_id || null;
 
 app.use(express.json());
 
-// Health check endpoint
+// Health check endpoint (matches exact required response shape)
 app.get('/health', async (req, res) => {
     try {
-        await pool.query('SELECT 1');
-        res.status(200).json({ status: 'ok', database: 'connected' });
+        await pool.query("SELECT 1");
+        res.json({ status: "ok", db: "connected" });
     } catch (err) {
-        res.status(500).json({ status: 'error', database: 'disconnected' });
+        res.status(500).json({ message: `db not connected, error: ${err.message}` });
     }
 });
 
@@ -32,12 +31,21 @@ app.use(notFoundMiddleware);
 
 // Centralized Error Handler Middleware
 app.use((err, req, res, next) => {
-    if (err.code === 'ECONNREFUSED' || err.message?.includes('connect ECONNREFUSED')) {
-        return res.status(500).json({ message: 'Database connection refused' });
+    if (err.code === "ECONNREFUSED" && err.port === 5432) {
+        console.log("The database connection was refused. Is your database service running?");
     }
 
     const status = err.status || err.statusCode || 500;
-    return res.status(status).json({ message: err.message || 'Internal Server Error' });
+    return res.status(status).json({ message: err.message || "Internal Server Error" });
 });
+
+// Graceful shutdown handling
+const handleShutdown = async () => {
+    await pool.end();
+    process.exit(0);
+};
+
+process.on('SIGINT', handleShutdown);
+process.on('SIGTERM', handleShutdown);
 
 module.exports = app;

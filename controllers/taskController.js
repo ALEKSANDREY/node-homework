@@ -1,6 +1,7 @@
 const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
+// Safely parses task ID; returns NaN if non-numeric string like "abs"
 const getTaskId = (req) => {
     let rawId;
     if (req.params && req.params.id !== undefined) rawId = req.params.id;
@@ -15,6 +16,7 @@ const getTaskId = (req) => {
     return num;
 };
 
+// Formats task output without returning user_id
 const formatTask = (row) => {
     if (!row) return null;
     return {
@@ -102,23 +104,21 @@ exports.update = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(global.user_id, 10);
 
-        const existing = await pool.query(
-            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
-            [taskId, userId]
-        );
+        // Dynamic update query building as described in Section 3g of Assignment 5b instructions
+        let keys = Object.keys(value);
+        keys = keys.map((key) => key === "isCompleted" ? "is_completed" : key);
+        const setClauses = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
+        const idParm = `$${keys.length + 1}`;
+        const userParm = `$${keys.length + 2}`;
 
-        if (existing.rows.length === 0) {
+        const queryText = `UPDATE tasks SET ${setClauses} WHERE id = ${idParm} AND user_id = ${userParm} RETURNING id, title, is_completed`;
+        const queryValues = [...Object.values(value), taskId, userId];
+
+        const result = await pool.query(queryText, queryValues);
+
+        if (result.rows.length === 0) {
             return res.status(404).json({ message: "Task not found" });
         }
-
-        const currentTask = existing.rows[0];
-        const updatedTitle = value.title !== undefined ? value.title : currentTask.title;
-        const updatedCompleted = value.isCompleted !== undefined ? value.isCompleted : currentTask.is_completed;
-
-        const result = await pool.query(
-            "UPDATE tasks SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING id, title, is_completed",
-            [updatedTitle, updatedCompleted, taskId, userId]
-        );
 
         return res.status(200).json(formatTask(result.rows[0]));
     } catch (err) {
