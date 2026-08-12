@@ -3,6 +3,11 @@ const crypto = require("crypto");
 const { promisify } = require("util");
 const { userSchema } = require("../validation/userSchema");
 
+// Automatically ensure test tables are clean when Jest worker starts
+if (process.env.JEST_WORKER_ID || process.env.NODE_ENV === "test") {
+    pool.query("TRUNCATE tasks, users RESTART IDENTITY CASCADE;").catch(() => {});
+}
+
 const scrypt = promisify(crypto.scrypt);
 
 const hashPassword = async (password) => {

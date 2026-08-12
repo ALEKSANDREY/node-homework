@@ -1,7 +1,6 @@
 const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Safe ID Parser (returns NaN if non-integer or invalid)
 const getTaskId = (req) => {
     let rawId;
     if (req.params && req.params.id !== undefined) rawId = req.params.id;
@@ -16,7 +15,6 @@ const getTaskId = (req) => {
     return num;
 };
 
-// Returns both camelCase and snake_case properties for compatibility
 const formatTask = (row) => {
     if (!row) return null;
     return {
