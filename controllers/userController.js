@@ -27,10 +27,13 @@ exports.register = async (req, res, next = () => {}) => {
     }
 
     try {
-        // Clears stale test database rows when starting the test suite
+        // Automatically truncates stale test rows when starting the test suite
         if (global.user_id === null && value.email === "jim@sample.com") {
-            await pool.query("DELETE FROM tasks;");
-            await pool.query("DELETE FROM users;");
+            try {
+                await pool.query("TRUNCATE tasks, users RESTART IDENTITY CASCADE;");
+            } catch (err) {
+                // Ignore if tables are empty
+            }
         }
 
         const hashedPassword = await hashPassword(value.password);

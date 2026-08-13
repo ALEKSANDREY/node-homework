@@ -8,12 +8,10 @@ const authMiddleware = require('./middleware/auth');
 const notFoundMiddleware = require('./middleware/not-found');
 const errorHandlerMiddleware = require('./middleware/error-handler');
 
-// Global user_id retained for assignment compatibility; global arrays removed
 global.user_id = global.user_id || null;
 
 app.use(express.json());
 
-// Health check endpoint
 app.get('/health', async (req, res) => {
     try {
         await pool.query("SELECT 1");
@@ -23,15 +21,12 @@ app.get('/health', async (req, res) => {
     }
 });
 
-// Routes
 app.use('/api/users', userRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
 
-// Middleware
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
-// Shutdown handling
 const handleShutdown = async () => {
     await pool.end();
     process.exit(0);
