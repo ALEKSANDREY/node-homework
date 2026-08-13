@@ -1,26 +1,10 @@
-// week-3-middleware/middleware/error-handler.js
-
-const errorHandler = (err, req, res, next) => {
-    const statusCode = err.statusCode || 500;
-    const errName = err.name || "Error";
-    const errMessage = err.message || "Internal Server Error";
-
-    // Format log output strictly as expected by Jest spies
-    if (statusCode >= 400 && statusCode < 500) {
-        console.warn(`WARN: ${errName} - ${errMessage}`);
-    } else {
-        console.error(`ERROR: ${errName} - ${errMessage}`);
+const errorHandlerMiddleware = (err, req, res, next) => {
+    if (err.code === "ECONNREFUSED" && err.port === 5432) {
+        console.log("The database connection was refused. Is your database service running?");
     }
 
-    const responseBody = {
-        error: statusCode === 500 ? "Internal Server Error" : errMessage,
-    };
-
-    if (req.requestId) {
-        responseBody.requestId = req.requestId;
-    }
-
-    return res.status(statusCode).json(responseBody);
+    const status = err.status || err.statusCode || 500;
+    return res.status(status).json({ message: err.message || "Internal Server Error" });
 };
 
-module.exports = errorHandler;
+module.exports = errorHandlerMiddleware;

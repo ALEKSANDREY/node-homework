@@ -1,46 +1,31 @@
+const pool = require("../db/pg-pool");
 const { taskSchema, patchTaskSchema } = require("../validation/taskSchema");
 
-// Required helper function
-const taskCounter = () => {
-    const tasks = global.tasks || [];
-    if (tasks.length === 0) return 1;
-    return Math.max(...tasks.map(t => Number(t.id) || 0)) + 1;
-};
+const getTaskId = (req) => {
+    let rawId;
+    if (req.params && req.params.id !== undefined) rawId = req.params.id;
+    else if (req.body && req.body.id !== undefined) rawId = req.body.id;
+    else if (req.id !== undefined) rawId = req.id;
 
-// Helper: Remove userId from response
-const sanitize = (task) => {
-    if (!task) return null;
-    const { userId, ...rest } = task;
-    return rest;
-};
-
-// Helper: Parse ID safely
-const parseTaskId = (idParam) => {
-    if (idParam === undefined || idParam === null) return null;
-    const num = Number(idParam);
-    if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {
-        return null;
+    if (rawId === undefined || rawId === null) return NaN;
+    const num = Number(rawId);
+    if (isNaN(num) || !Number.isInteger(num) || num <= 0) {
+        return NaN;
     }
     return num;
 };
 
-// Helper: Get user email safely
-const getUserEmail = () => {
-    if (!global.user_id) return null;
-    if (typeof global.user_id === 'object') return global.user_id.email || null;
-    if (typeof global.user_id === 'string') return global.user_id;
-    return null;
+const formatTask = (row) => {
+    if (!row) return null;
+    return {
+        id: row.id,
+        title: row.title,
+        isCompleted: row.is_completed,
+        is_completed: row.is_completed
+    };
 };
 
-// Helper: Check task ownership via email
-const isTaskOwner = (task) => {
-    const email = getUserEmail();
-    if (!task || !email) return false;
-    return task.userId === email;
-};
-
-// 1. Create Task (POST /api/tasks)
-exports.create = async (req, res) => {
+exports.create = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
 
     const { error, value } = taskSchema.validate(req.body, { abortEarly: false });
@@ -48,49 +33,63 @@ exports.create = async (req, res) => {
         return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
-    const newTask = {
-        id: taskCounter(),
-        userId: getUserEmail(),
-        title: value.title,
-        isCompleted: value.isCompleted ?? false
-    };
-
-    if (!global.tasks) global.tasks = [];
-    global.tasks.push(newTask);
-    return res.status(201).json(sanitize(newTask));
+    try {
+        const userId = parseInt(global.user_id, 10);
+        const result = await pool.query(
+            `INSERT INTO tasks (title, is_completed, user_id) VALUES ($1, $2, $3) RETURNING id, title, is_completed`,
+            [value.title, value.isCompleted ?? false, userId]
+        );
+        return res.status(201).json(formatTask(result.rows[0]));
+    } catch (err) {
+        if (typeof next === "function") return next(err);
+    }
 };
 
-// 2. Index Tasks (GET /api/tasks)
-exports.index = async (req, res) => {
-    const userTasks = (global.tasks || []).filter((t) => isTaskOwner(t));
+exports.index = async (req, res, next = () => {}) => {
+    try {
+        const userId = parseInt(global.user_id, 10);
+        const result = await pool.query(
+            "SELECT id, title, is_completed FROM tasks WHERE user_id = $1",
+            [userId]
+        );
 
-    if (userTasks.length === 0) {
-        return res.status(404).json({ message: "No tasks found" });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "No tasks found" });
+        }
+        return res.status(200).json(result.rows.map(formatTask));
+    } catch (err) {
+        if (typeof next === "function") return next(err);
     }
-
-    return res.status(200).json(userTasks.map(sanitize));
 };
 
-// 3. Show Task (GET /api/tasks/:id)
-exports.show = async (req, res) => {
-    const taskId = parseTaskId(req.params ? req.params.id : null);
-    if (!taskId) {
-        return res.status(400).json({ message: "Invalid task ID" });
-    }
-
-    const task = (global.tasks || []).find(
-        (t) => Number(t.id) === taskId && isTaskOwner(t)
-    );
-
-    if (!task) {
+exports.show = async (req, res, next = () => {}) => {
+    const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
         return res.status(404).json({ message: "Task not found" });
     }
 
-    return res.status(200).json(sanitize(task));
+    try {
+        const userId = parseInt(global.user_id, 10);
+        const result = await pool.query(
+            "SELECT id, title, is_completed FROM tasks WHERE id = $1 AND user_id = $2",
+            [taskId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        return res.status(200).json(formatTask(result.rows[0]));
+    } catch (err) {
+        if (typeof next === "function") return next(err);
+    }
 };
 
-// 4. Update Task (PATCH /api/tasks/:id)
-exports.update = async (req, res) => {
+exports.update = async (req, res, next = () => {}) => {
+    const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
+        return res.status(404).json({ message: "Task not found" });
+    }
+
     if (!req.body || Object.keys(req.body).length === 0) {
         return res.status(400).json({ message: "Request body cannot be empty" });
     }
@@ -100,39 +99,48 @@ exports.update = async (req, res) => {
         return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
     }
 
-    const taskId = parseTaskId(req.params ? req.params.id : null);
-    if (!taskId) {
-        return res.status(400).json({ message: "Invalid task ID" });
+    try {
+        const userId = parseInt(global.user_id, 10);
+
+        let keys = Object.keys(value);
+        keys = keys.map((key) => key === "isCompleted" ? "is_completed" : key);
+        const setClauses = keys.map((key, i) => `${key} = $${i + 1}`).join(", ");
+        const idParm = `$${keys.length + 1}`;
+        const userParm = `$${keys.length + 2}`;
+
+        const queryText = `UPDATE tasks SET ${setClauses} WHERE id = ${idParm} AND user_id = ${userParm} RETURNING id, title, is_completed`;
+        const queryValues = [...Object.values(value), taskId, userId];
+
+        const result = await pool.query(queryText, queryValues);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+
+        return res.status(200).json(formatTask(result.rows[0]));
+    } catch (err) {
+        if (typeof next === "function") return next(err);
     }
-
-    const task = (global.tasks || []).find(
-        (t) => Number(t.id) === taskId && isTaskOwner(t)
-    );
-
-    if (!task) {
-        return res.status(404).json({ message: "Task not found" });
-    }
-
-    Object.assign(task, value);
-
-    return res.status(200).json(sanitize(task));
 };
 
-// 5. Delete Task (DELETE /api/tasks/:id)
-exports.deleteTask = async (req, res) => {
-    const taskId = parseTaskId(req.params ? req.params.id : null);
-    if (!taskId) {
-        return res.status(400).json({ message: "Invalid task ID" });
-    }
-
-    const index = (global.tasks || []).findIndex(
-        (t) => Number(t.id) === taskId && isTaskOwner(t)
-    );
-
-    if (index === -1) {
+exports.deleteTask = async (req, res, next = () => {}) => {
+    const taskId = getTaskId(req);
+    if (isNaN(taskId)) {
         return res.status(404).json({ message: "Task not found" });
     }
 
-    const [deletedTask] = global.tasks.splice(index, 1);
-    return res.status(200).json(sanitize(deletedTask));
+    try {
+        const userId = parseInt(global.user_id, 10);
+        const result = await pool.query(
+            "DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING id, title, is_completed",
+            [taskId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        return res.status(200).json(formatTask(result.rows[0]));
+    } catch (err) {
+        if (typeof next === "function") return next(err);
+    }
 };
