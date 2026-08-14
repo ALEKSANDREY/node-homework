@@ -4,6 +4,7 @@ const prisma = require('./db/prisma');
 
 const userRouter = require('./routes/userRoutes');
 const taskRouter = require('./routes/taskRoutes');
+const analyticsRouter = require('./routes/analyticsRoutes');
 const authMiddleware = require('./middleware/auth');
 const notFoundMiddleware = require('./middleware/not-found');
 const errorHandlerMiddleware = require('./middleware/error-handler');
@@ -12,7 +13,7 @@ global.user_id = global.user_id || null;
 
 app.use(express.json());
 
-// Health Check Endpoint with Prisma
+// Health check endpoint
 app.get('/health', async (req, res) => {
     try {
         await prisma.$queryRaw`SELECT 1`;
@@ -25,6 +26,7 @@ app.get('/health', async (req, res) => {
 // Routes
 app.use('/api/users', userRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
+app.use('/api/analytics', authMiddleware, analyticsRouter);
 
 // Middlewares
 app.use(notFoundMiddleware);

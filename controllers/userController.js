@@ -23,11 +23,11 @@ exports.register = async (req, res, next = () => {}) => {
 
     const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
+        return res.status(400).json({ message: error.details ? error.details[0].message : error.message, error: "Validation failed" });
     }
 
     try {
-        // Automatically clears test database rows on initial test run
+        // Clear test database on initial test call
         if (global.user_id === null && value.email === "jim@sample.com") {
             try {
                 await prisma.task.deleteMany({});
@@ -37,20 +37,52 @@ exports.register = async (req, res, next = () => {}) => {
 
         const hashedPassword = await hashPassword(value.password);
 
-        const user = await prisma.user.create({
-            data: {
-                name: value.name,
-                email: value.email.toLowerCase(),
-                hashedPassword: hashedPassword
-            },
-            select: { id: true, name: true, email: true }
+        // Transaction creates user + 3 welcome tasks atomically
+        const result = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    name: value.name,
+                    email: value.email.toLowerCase(),
+                    hashedPassword: hashedPassword
+                },
+                select: { id: true, email: true, name: true, createdAt: true }
+            });
+
+            const welcomeTaskData = [
+                { title: "Complete your profile", userId: newUser.id, priority: "medium", isCompleted: false },
+                { title: "Add your first task", userId: newUser.id, priority: "high", isCompleted: false },
+                { title: "Explore the app", userId: newUser.id, priority: "low", isCompleted: false }
+            ];
+
+            await tx.task.createMany({ data: welcomeTaskData });
+
+            const welcomeTasks = await tx.task.findMany({
+                where: {
+                    userId: newUser.id,
+                    title: { in: welcomeTaskData.map((t) => t.title) }
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    isCompleted: true,
+                    userId: true,
+                    priority: true
+                }
+            });
+
+            return { user: newUser, welcomeTasks };
         });
 
-        global.user_id = user.id;
-        return res.status(201).json(user);
+        global.user_id = result.user.id;
+
+        return res.status(201).json({
+            user: result.user,
+            welcomeTasks: result.welcomeTasks,
+            transactionStatus: "success"
+        });
     } catch (e) {
         if (e.name === "PrismaClientKnownRequestError" && e.code === "P2002") {
-            return res.status(400).json({ message: "Email already registered" });
+            return res.status(400).json({ message: "Email already registered", error: "Email already registered" });
         }
         if (typeof next === "function") return next(e);
     }
@@ -67,12 +99,12 @@ exports.logon = async (req, res, next = () => {}) => {
         });
 
         if (!user) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid credentials", error: "Invalid credentials" });
         }
 
         const isValid = await comparePassword(password, user.hashedPassword);
         if (!isValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid credentials", error: "Invalid credentials" });
         }
 
         global.user_id = user.id;
