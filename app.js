@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const pool = require('./db/pg-pool');
+const prisma = require('./db/prisma');
 
 const userRouter = require('./routes/userRoutes');
 const taskRouter = require('./routes/taskRoutes');
@@ -12,23 +12,28 @@ global.user_id = global.user_id || null;
 
 app.use(express.json());
 
+// Health Check Endpoint with Prisma
 app.get('/health', async (req, res) => {
     try {
-        await pool.query("SELECT 1");
-        res.json({ status: "ok", db: "connected" });
+        await prisma.$queryRaw`SELECT 1`;
+        res.json({ status: 'ok', db: 'connected' });
     } catch (err) {
-        res.status(500).json({ message: `db not connected, error: ${err.message}` });
+        res.status(500).json({ status: 'error', db: 'not connected', error: err.message });
     }
 });
 
+// Routes
 app.use('/api/users', userRouter);
 app.use('/api/tasks', authMiddleware, taskRouter);
 
+// Middlewares
 app.use(notFoundMiddleware);
 app.use(errorHandlerMiddleware);
 
+// Graceful Shutdown
 const handleShutdown = async () => {
-    await pool.end();
+    await prisma.$disconnect();
+    console.log("Prisma disconnected");
     process.exit(0);
 };
 
