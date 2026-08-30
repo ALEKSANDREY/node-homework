@@ -1,4 +1,4 @@
-const pool = require("../db/pg-pool");
+const prisma = require("../db/prisma");
 const crypto = require("crypto");
 const { promisify } = require("util");
 const { userSchema } = require("../validation/userSchema");
@@ -23,38 +23,66 @@ exports.register = async (req, res, next = () => {}) => {
 
     const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        return res.status(400).json({ message: error.details ? error.details[0].message : error.message });
+        return res.status(400).json({ message: error.details ? error.details[0].message : error.message, error: "Validation failed" });
     }
 
     try {
-        // Automatically truncates stale test rows when starting the test suite
+        // Clear test database on initial test call
         if (global.user_id === null && value.email === "jim@sample.com") {
             try {
-                await pool.query("TRUNCATE tasks, users RESTART IDENTITY CASCADE;");
-            } catch (err) {
-                // Ignore if tables are empty
-            }
+                await prisma.task.deleteMany({});
+                await prisma.user.deleteMany({});
+            } catch (err) {}
         }
 
         const hashedPassword = await hashPassword(value.password);
 
-        const checkUser = await pool.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [value.email]);
-        if (checkUser.rows.length > 0) {
-            return res.status(400).json({ message: "Email already registered" });
-        }
+        // Transaction creates user + 3 welcome tasks atomically
+        const result = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    name: value.name,
+                    email: value.email.toLowerCase(),
+                    hashedPassword: hashedPassword
+                },
+                select: { id: true, email: true, name: true, createdAt: true }
+            });
 
-        const result = await pool.query(
-            `INSERT INTO users (email, name, hashed_password) VALUES ($1, $2, $3) RETURNING id, email, name`,
-            [value.email, value.name, hashedPassword]
-        );
+            const welcomeTaskData = [
+                { title: "Complete your profile", userId: newUser.id, priority: "medium", isCompleted: false },
+                { title: "Add your first task", userId: newUser.id, priority: "high", isCompleted: false },
+                { title: "Explore the app", userId: newUser.id, priority: "low", isCompleted: false }
+            ];
 
-        const newUser = result.rows[0];
-        global.user_id = newUser.id;
+            await tx.task.createMany({ data: welcomeTaskData });
 
-        return res.status(201).json({ id: newUser.id, name: newUser.name, email: newUser.email });
+            const welcomeTasks = await tx.task.findMany({
+                where: {
+                    userId: newUser.id,
+                    title: { in: welcomeTaskData.map((t) => t.title) }
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    isCompleted: true,
+                    userId: true,
+                    priority: true
+                }
+            });
+
+            return { user: newUser, welcomeTasks };
+        });
+
+        global.user_id = result.user.id;
+
+        return res.status(201).json({
+            user: result.user,
+            welcomeTasks: result.welcomeTasks,
+            transactionStatus: "success"
+        });
     } catch (e) {
-        if (e.code === "23505") {
-            return res.status(400).json({ message: "Email already registered" });
+        if (e.name === "PrismaClientKnownRequestError" && e.code === "P2002") {
+            return res.status(400).json({ message: "Email already registered", error: "Email already registered" });
         }
         if (typeof next === "function") return next(e);
     }
@@ -65,15 +93,18 @@ exports.logon = async (req, res, next = () => {}) => {
     const { email, password } = req.body;
 
     try {
-        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-        if (result.rows.length === 0) {
-            return res.status(401).json({ message: "Invalid credentials" });
+        const lowerEmail = email ? email.toLowerCase() : "";
+        const user = await prisma.user.findUnique({
+            where: { email: lowerEmail }
+        });
+
+        if (!user) {
+            return res.status(401).json({ message: "Invalid credentials", error: "Invalid credentials" });
         }
 
-        const user = result.rows[0];
-        const isValid = await comparePassword(password, user.hashed_password);
+        const isValid = await comparePassword(password, user.hashedPassword);
         if (!isValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid credentials", error: "Invalid credentials" });
         }
 
         global.user_id = user.id;
