@@ -45,6 +45,7 @@ app.get("/health", async (req, res) => {
 
 // Route handlers
 app.use("/api/users", userRouter);
+app.use("/user", userRouter); // Supports /user/register and /api/users/register
 app.use("/api/tasks", jwtMiddleware, taskRouter);
 app.use("/api/analytics", jwtMiddleware, analyticsRouter);
 
