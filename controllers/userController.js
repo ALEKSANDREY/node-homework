@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { promisify } = require("util");
 const { randomUUID } = require("crypto");
 const jwt = require("jsonwebtoken");
+const { StatusCodes } = require("http-status-codes");
 const { userSchema } = require("../validation/userSchema");
 
 const scrypt = promisify(crypto.scrypt);
@@ -37,6 +38,46 @@ const setJwtCookie = (req, res, user) => {
 
 exports.register = async (req, res, next = () => {}) => {
     if (!req.body) req.body = {};
+
+    // --- reCAPTCHA Verification Start ---
+    let isPerson = false;
+    if (req.body.recaptchaToken) {
+        const token = req.body.recaptchaToken;
+        const params = new URLSearchParams();
+        params.append("secret", process.env.RECAPTCHA_SECRET);
+        params.append("response", token);
+        params.append("remoteip", req.ip);
+
+        try {
+            const response = await fetch(
+                "https://www.google.com/recaptcha/api/siteverify",
+                {
+                    method: "POST",
+                    body: params.toString(),
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                }
+            );
+            const data = await response.json();
+            if (data.success) isPerson = true;
+            delete req.body.recaptchaToken;
+        } catch (err) {
+            return next(err);
+        }
+    } else if (
+        process.env.RECAPTCHA_BYPASS &&
+        req.get("X-Recaptcha-Test") === process.env.RECAPTCHA_BYPASS
+    ) {
+        isPerson = true;
+    }
+
+    if (!isPerson) {
+        return res
+            .status(StatusCodes.BAD_REQUEST)
+            .json({ message: "Bot verification failed. Please complete the reCAPTCHA." });
+    }
+    // --- reCAPTCHA Verification End ---
 
     const { error, value } = userSchema.validate(req.body, { abortEarly: false });
     if (error) {
