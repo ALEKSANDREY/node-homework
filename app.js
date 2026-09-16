@@ -27,7 +27,7 @@ app.use(
 app.use(helmet());
 
 // Body and cookie parsing
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
 // XSS Sanitizer placed after body/cookie parsers
