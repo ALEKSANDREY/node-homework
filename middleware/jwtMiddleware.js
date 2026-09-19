@@ -8,7 +8,7 @@ const send401 = (res) => {
 };
 
 module.exports = async (req, res, next) => {
-    const token = req?.cookies?.jwt;
+    const token = req?.cookies?.jwt || req?.cookies?.token;
     if (!token) {
         return send401(res);
     }

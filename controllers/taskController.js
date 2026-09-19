@@ -31,7 +31,11 @@ exports.index = async (req, res, next = () => {}) => {
         const limit = parseInt(req.query.limit, 10) || 10;
         const skip = (page - 1) * limit;
 
-        const whereClause = { userId };
+        // Exclude soft-deleted tasks from all index queries
+        const whereClause = {
+            userId,
+            deletedAt: null,
+        };
 
         if (req.query.find) {
             whereClause.title = {
@@ -46,19 +50,6 @@ exports.index = async (req, res, next = () => {}) => {
 
         const tasks = await prisma.task.findMany({
             where: whereClause,
-            select: {
-                id: true,
-                title: true,
-                isCompleted: true,
-                priority: true,
-                createdAt: true,
-                User: {
-                    select: {
-                        name: true,
-                        email: true,
-                    },
-                },
-            },
             skip,
             take: limit,
             orderBy: getOrderBy(req.query),
@@ -164,14 +155,18 @@ exports.show = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(req.user.id, 10);
         const task = await prisma.task.findFirst({
-            where: { id: taskId, userId },
+            where: {
+                id: taskId,
+                userId,
+                deletedAt: null, // Exclude soft-deleted tasks
+            },
             select: {
                 id: true,
                 title: true,
                 isCompleted: true,
                 priority: true,
                 createdAt: true,
-                User: {
+                user: {
                     select: { name: true, email: true },
                 },
             },
@@ -204,6 +199,15 @@ exports.update = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(req.user.id, 10);
 
+        // Ensure task exists and is not soft-deleted before updating
+        const existingTask = await prisma.task.findFirst({
+            where: { id: taskId, userId, deletedAt: null },
+        });
+
+        if (!existingTask) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+
         const task = await prisma.task.update({
             where: {
                 id_userId: {
@@ -233,14 +237,30 @@ exports.deleteTask = async (req, res, next = () => {}) => {
     try {
         const userId = parseInt(req.user.id, 10);
 
-        const task = await prisma.task.delete({
+        // 1. Check if task exists and has not already been soft-deleted
+        const existingTask = await prisma.task.findFirst({
+            where: {
+                id: taskId,
+                userId,
+                deletedAt: null,
+            },
+        });
+
+        if (!existingTask) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+
+        // 2. Perform soft delete by setting deletedAt to now
+        const task = await prisma.task.update({
             where: {
                 id_userId: {
                     id: taskId,
                     userId: userId,
                 },
             },
-            select: { id: true, title: true, isCompleted: true, priority: true, createdAt: true },
+            data: {
+                deletedAt: new Date(),
+            },
         });
 
         return res.status(200).json(task);
