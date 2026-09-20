@@ -1,3 +1,18 @@
+# Node.js Coursework
+
+My coursework for **Code the Dream's Node.js / Express program** (completing September 2026): REST API exercises and assignments built with Node.js and Express, including database-backed work with PostgreSQL.
+
+## What I built here
+
+- REST API endpoints with **Node.js + Express** (GET, POST, PATCH, DELETE)
+- Request testing with **Postman**
+- **PostgreSQL** — schema setup, SQL queries, connecting Node apps to Postgres
+- Environment-based config with `.env` files
+- Git workflow: feature branches, pull requests, and code review in a mentored cohort
+
+---
+*Course setup guide below (Code the Dream Node/Express class).*
+
 # Getting Started with Node Development
 
 Welcome to Code the Dream's Node/Express class!
